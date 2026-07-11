@@ -57,12 +57,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > "$GITHUB_WORKSPACE/builds/repository.json" <<'EOF'
+          cat > "$GITHUB_WORKSPACE/builds/repository.json" <<EOF
           {
             "name": "Dizibox Extension",
             "description": "Dizibox dizi ve film eklentisi - Turkish series & movies provider",
             "manifestVersion": 1,
-            "iconUrl": "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/builds/icon.png",
             "pluginLists": [
               "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/builds/plugins.json"
             ]
