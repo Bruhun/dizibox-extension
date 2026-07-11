@@ -1,0 +1,22 @@
+[
+    {
+        "iconUrl": "https://cdn-icons-png.flaticon.com/512/2798/2798004.png",
+        "fileHash": "sha256-cd3f167899dd131eb707b36be2c223e36548e6d058f6ee029a2e2a7bcaef17aa",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/Bruhun/dizibox-extension",
+        "fileSize": 38560,
+        "status": 1,
+        "language": "tr",
+        "authors": [
+            "Dizibox"
+        ],
+        "tvTypes": [
+            "TvSeries"
+        ],
+        "version": 8,
+        "internalName": "DiziboxProvider",
+        "description": "Dizibox - Yabanci dizi izleme eklentisi",
+        "url": "https://cdn.jsdelivr.net/gh/Bruhun/dizibox-extension@builds/DiziboxProvider.cs3",
+        "name": "DiziboxProvider"
+    }
+]
