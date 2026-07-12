@@ -9,7 +9,7 @@ cloudstream {
     requiresResources = false
     language = "tr"
 
-    iconUrl = "https://raw.githubusercontent.com/${System.getenv("GITHUB_REPOSITORY") ?: "user/repo"}/builds/icon.png"
+    iconUrl = "https://cdn-icons-png.flaticon.com/512/2798/2798004.png"
 }
 
 android {
