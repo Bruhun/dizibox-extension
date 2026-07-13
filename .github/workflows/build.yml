@@ -63,7 +63,7 @@ jobs:
             "description": "Dizibox dizi ve film eklentisi - Turkish series & movies provider",
             "manifestVersion": 1,
             "pluginLists": [
-              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/builds/plugins.json"
+              "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/builds/plugins.json"
             ]
           }
           EOF
