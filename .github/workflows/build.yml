@@ -62,6 +62,7 @@ jobs:
             "name": "Dizibox Extension",
             "description": "Dizibox dizi ve film eklentisi - Turkish series & movies provider",
             "manifestVersion": 1,
+            "iconUrl": "https://cdn-icons-png.flaticon.com/512/2798/2798004.png",
             "pluginLists": [
               "https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/refs/heads/builds/plugins.json"
             ]
