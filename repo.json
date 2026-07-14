@@ -4,6 +4,6 @@
   "manifestVersion": 1,
   "iconUrl": "https://cdn-icons-png.flaticon.com/512/2798/2798004.png",
   "pluginLists": [
-    "https://raw.githubusercontent.com/Bruhun/dizibox-extension/refs/heads/builds/plugins.json"
+    "https://cdn.jsdelivr.net/gh/Bruhun/dizibox-extension@builds/plugins.json"
   ]
 }
