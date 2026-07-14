@@ -182,7 +182,8 @@ class DiziboxAltProvider : MainAPI() {
             val hlsUrl = Regex("""var\s+(hlsSrc|src)\s*=\s*["'`]([^"'`]+)["'`]""").find(html)?.groupValues?.let { it.getOrNull(2) }
             var subsFound = false
 
-            DiziboxUtils.extractSubtitlesFromEmbed(html) { url, label ->
+            val embedSubs = DiziboxUtils.extractSubtitlesFromEmbed(html)
+            embedSubs.forEach { (url, label) ->
                 subsFound = true
                 subtitleCallback.invoke(newSubtitleFile(label, url))
             }

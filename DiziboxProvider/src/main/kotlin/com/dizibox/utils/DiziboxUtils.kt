@@ -31,15 +31,17 @@ object DiziboxUtils {
         }
     }
 
-    fun extractSubtitlesFromEmbed(html: String, callback: (String, String) -> Unit) {
+    fun extractSubtitlesFromEmbed(html: String): List<Pair<String, String>> {
+        val results = mutableListOf<Pair<String, String>>()
         val trackRegex = Regex("""\{[^}]*?"file"\s*:\s*"([^"]*)"[^}]*?"label"\s*:\s*"([^"]*)"[^}]*?\}""")
         trackRegex.findAll(html).forEach { match ->
             val url = match.groupValues[1].replace("\\/", "/")
             val label = match.groupValues[2]
             if (url.isNotBlank() && label.isNotBlank()) {
-                callback(url, label)
+                results.add(url to label)
             }
         }
+        return results
     }
 
     fun buildOpenSubtitlesSearchUrl(seriesSlug: String, season: Int, episode: Int): String {
