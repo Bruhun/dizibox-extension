@@ -12,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.net.URLDecoder
 import java.net.URLEncoder
 
 class DiziboxProvider : MainAPI() {
@@ -176,13 +177,11 @@ class DiziboxProvider : MainAPI() {
         val sortedSeasons = seasonNumbers.sorted()
 
         coroutineScope {
-            sortedSeasons.chunked(2).forEach { batch ->
-                batch.map { season ->
-                    async {
-                        discoverSeasonEpisodes(season, slug, url)
-                    }
-                }.awaitAll().forEach { eps -> episodeList.addAll(eps) }
-            }
+            sortedSeasons.map { season ->
+                async {
+                    discoverSeasonEpisodes(season, slug, url)
+                }
+            }.awaitAll().forEach { eps -> episodeList.addAll(eps) }
         }
 
         if (episodeList.isEmpty()) {
@@ -201,7 +200,7 @@ class DiziboxProvider : MainAPI() {
         var episodeNum = 1
         var consecutiveFails = 0
         while (consecutiveFails < 5 && episodeNum <= 30) {
-            delay(250L)
+            if (episodeNum > 1) delay(50L)
             val epUrl = fixUrl("/bolum/$slug-$season-sezon-$episodeNum-bolum")
             val epTitle = fetchEpisodeTitle(epUrl, referer)
             if (!epTitle.isNullOrBlank()) {
@@ -229,7 +228,7 @@ class DiziboxProvider : MainAPI() {
         return try {
             attempt()
         } catch (_: Exception) {
-            delay(1000L)
+            delay(500L)
             try { attempt() } catch (_: Exception) { null }
         }
     }
@@ -243,6 +242,7 @@ class DiziboxProvider : MainAPI() {
             ?: doc.selectFirst(".ip-poster img")?.let { DiziboxUtils.extractImage(it, mainUrl) }
 
         val description = doc.selectFirst("meta[name=description]")?.attr("content")?.trim()
+        val plotName = title
 
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
@@ -270,18 +270,32 @@ class DiziboxProvider : MainAPI() {
             else -> {
                 val doc = app.get(fixedData, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
                 val iframeSrc = doc.selectFirst("iframe")?.attr("src")
-                if (iframeSrc != null) return resolveEmbed(fixUrl(iframeSrc), callback)
+                if (iframeSrc != null) return resolveEmbed(fixUrl(iframeSrc), subtitleCallback, callback)
                 return false
             }
         }
 
-        return resolveEmbed(embedUrl, callback)
+        return resolveEmbed(embedUrl, subtitleCallback, callback)
     }
 
-    private suspend fun resolveEmbed(embedUrl: String, callback: (ExtractorLink) -> Unit): Boolean {
+    private suspend fun resolveEmbed(
+        embedUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
         return try {
             val html = app.get(embedUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").text
             val hlsUrl = Regex("""var\s+(hlsSrc|src)\s*=\s*["'`]([^"'`]+)["'`]""").find(html)?.groupValues?.let { it.getOrNull(2) }
+            var subsFound = false
+
+            DiziboxUtils.extractSubtitlesFromEmbed(html) { url, label ->
+                subsFound = true
+                subtitleCallback.invoke(newSubtitleFile(label, url))
+            }
+
+            if (!subsFound) {
+                fetchOpenSubtitlesIfEpisode(embedUrl, subtitleCallback)
+            }
 
             if (!hlsUrl.isNullOrBlank()) {
                 callback.invoke(
@@ -301,6 +315,28 @@ class DiziboxProvider : MainAPI() {
             }
         } catch (_: Exception) {
             false
+        }
+    }
+
+    private suspend fun fetchOpenSubtitlesIfEpisode(
+        embedUrl: String,
+        subtitleCallback: (SubtitleFile) -> Unit
+    ) {
+        val slugMatch = Regex("""slug=([^&]+)""").find(embedUrl) ?: return
+        val slug = URLDecoder.decode(slugMatch.groupValues[1], "UTF-8")
+
+        val seasonMatch = Regex("-(\\d+)-sezon-").find(slug)
+        val episodeMatch = Regex("-(\\d+)-bolum").find(slug)
+        val season = seasonMatch?.groupValues?.get(1)?.toIntOrNull() ?: return
+        val episode = episodeMatch?.groupValues?.get(1)?.toIntOrNull() ?: return
+
+        val seriesSlug = slug.replace(Regex("-\\d+-sezon-\\d+-bolum\$"), "")
+            .replace(Regex("-\\d+-sezon-.*\$"), "")
+            .takeIf { it.isNotBlank() } ?: return
+
+        val results = DiziboxUtils.searchOpenSubtitles(app, seriesSlug, season, episode)
+        results.take(4).forEach { (url, lang) ->
+            subtitleCallback.invoke(newSubtitleFile(lang, url))
         }
     }
 

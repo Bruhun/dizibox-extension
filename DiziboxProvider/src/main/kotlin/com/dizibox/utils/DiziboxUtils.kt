@@ -1,6 +1,11 @@
 package com.dizibox.utils
 
+import com.fasterxml.jackson.annotation.JsonProperty
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
+import com.lagradost.cloudstream3.utils.AppUtils
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 object DiziboxUtils {
     val headers = mapOf(
@@ -24,6 +29,56 @@ object DiziboxUtils {
             src.startsWith("http") -> src
             src.startsWith("//") -> "https:$src"
             else -> mainUrl + src
+        }
+    }
+
+    fun extractSubtitlesFromEmbed(html: String, callback: (String, String) -> Unit) {
+        val trackRegex = Regex("""\{[^}]*?"file"\s*:\s*"([^"]*)"[^}]*?"label"\s*:\s*"([^"]*)"[^}]*?\}""")
+        trackRegex.findAll(html).forEach { match ->
+            val url = match.groupValues[1].replace("\\/", "/")
+            val label = match.groupValues[2]
+            if (url.isNotBlank() && label.isNotBlank()) {
+                callback(url, label)
+            }
+        }
+    }
+
+    data class OpenSubtitleResult(
+        @JsonProperty("SubFileName") val fileName: String? = null,
+        @JsonProperty("SubDownloadLink") val downloadLink: String? = null,
+        @JsonProperty("LanguageName") val language: String? = null,
+        @JsonProperty("MatchedBy") val matchedBy: String? = null
+    )
+
+    private val osHeaders = mapOf(
+        "User-Agent" to "TemporaryUserAgent",
+        "Accept" to "application/json"
+    )
+
+    suspend fun searchOpenSubtitles(
+        app: AppUtils,
+        seriesSlug: String,
+        season: Int,
+        episode: Int
+    ): List<Pair<String, String>> {
+        val query = seriesSlug.replace("-", " ")
+        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+        val searchUrl = "https://rest.opensubtitles.org/search/query-$encodedQuery/season-$season/episode-$episode/sublanguageid-eng,tur"
+
+        return try {
+            val response = app.get(searchUrl, headers = osHeaders, referer = "https://www.opensubtitles.org/")
+            val mapper = jacksonObjectMapper()
+            val results: List<OpenSubtitleResult> = mapper.readValue(response.text)
+
+            results.mapNotNull { result ->
+                val link = result.downloadLink
+                val lang = result.language ?: "Unknown"
+                if (!link.isNullOrBlank()) {
+                    link to lang
+                } else null
+            }
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 }

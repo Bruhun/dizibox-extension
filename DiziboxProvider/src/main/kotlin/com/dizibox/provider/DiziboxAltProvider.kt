@@ -180,6 +180,30 @@ class DiziboxAltProvider : MainAPI() {
         return try {
             val html = app.get(embedUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").text
             val hlsUrl = Regex("""var\s+(hlsSrc|src)\s*=\s*["'`]([^"'`]+)["'`]""").find(html)?.groupValues?.let { it.getOrNull(2) }
+            var subsFound = false
+
+            DiziboxUtils.extractSubtitlesFromEmbed(html) { url, label ->
+                subsFound = true
+                subtitleCallback.invoke(newSubtitleFile(label, url))
+            }
+
+            if (!subsFound && type == "dizi") {
+                val seasonMatch = Regex("-(\\d+)-sezon-").find(slug)
+                val episodeMatch = Regex("-(\\d+)-bolum").find(slug)
+                val season = seasonMatch?.groupValues?.get(1)?.toIntOrNull()
+                val episode = episodeMatch?.groupValues?.get(1)?.toIntOrNull()
+                if (season != null && episode != null) {
+                    val seriesSlug = slug.replace(Regex("-\\d+-sezon-\\d+-bolum\$"), "")
+                        .replace(Regex("-\\d+-sezon-.*\$"), "")
+                        .takeIf { it.isNotBlank() }
+                    if (seriesSlug != null) {
+                        val results = DiziboxUtils.searchOpenSubtitles(app, seriesSlug, season, episode)
+                        results.take(4).forEach { (url, lang) ->
+                            subtitleCallback.invoke(newSubtitleFile(lang, url))
+                        }
+                    }
+                }
+            }
 
             if (!hlsUrl.isNullOrBlank()) {
                 callback.invoke(
