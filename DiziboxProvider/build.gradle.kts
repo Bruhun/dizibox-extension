@@ -1,4 +1,4 @@
-version = 6
+version = 7
 
 cloudstream {
     description = "Dizibox - Yabanci dizi ve film izleme eklentisi"

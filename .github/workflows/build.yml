@@ -52,6 +52,7 @@ jobs:
           ./gradlew make makePluginsJson --stacktrace --info
           find . -type f -path "*/build/*.cs3" -exec cp {} "$GITHUB_WORKSPACE/builds/" \;
           cp build/plugins.json "$GITHUB_WORKSPACE/builds"
+          sed -i "s|https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/builds/|https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@builds/|g" "$GITHUB_WORKSPACE/builds/plugins.json"
 
       - name: Generate repository manifest
         shell: bash
