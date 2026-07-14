@@ -179,7 +179,7 @@ class DiziboxAltProvider : MainAPI() {
 
         return try {
             val html = app.get(embedUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").text
-            val hlsUrl = Regex("""var src\s*=\s*["']([^"']+)["']""").find(html)?.groupValues?.get(1)
+            val hlsUrl = Regex("""var\s+(hlsSrc|src)\s*=\s*["'`]([^"'`]+)["'`]""").find(html)?.groupValues?.let { it.getOrNull(2) }
 
             if (!hlsUrl.isNullOrBlank()) {
                 callback.invoke(
