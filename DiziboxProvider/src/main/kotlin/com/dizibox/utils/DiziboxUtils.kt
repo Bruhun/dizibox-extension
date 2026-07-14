@@ -3,7 +3,6 @@ package com.dizibox.utils
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.lagradost.cloudstream3.utils.AppUtils
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
@@ -43,42 +42,34 @@ object DiziboxUtils {
         }
     }
 
-    data class OpenSubtitleResult(
-        @JsonProperty("SubFileName") val fileName: String? = null,
-        @JsonProperty("SubDownloadLink") val downloadLink: String? = null,
-        @JsonProperty("LanguageName") val language: String? = null,
-        @JsonProperty("MatchedBy") val matchedBy: String? = null
-    )
-
-    private val osHeaders = mapOf(
-        "User-Agent" to "TemporaryUserAgent",
-        "Accept" to "application/json"
-    )
-
-    suspend fun searchOpenSubtitles(
-        app: AppUtils,
-        seriesSlug: String,
-        season: Int,
-        episode: Int
-    ): List<Pair<String, String>> {
+    fun buildOpenSubtitlesSearchUrl(seriesSlug: String, season: Int, episode: Int): String {
         val query = seriesSlug.replace("-", " ")
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val searchUrl = "https://rest.opensubtitles.org/search/query-$encodedQuery/season-$season/episode-$episode/sublanguageid-eng,tur"
+        return "https://rest.opensubtitles.org/search/query-$encodedQuery/season-$season/episode-$episode/sublanguageid-eng,tur"
+    }
 
+    fun parseOpenSubtitlesResponse(jsonText: String): List<Pair<String, String>> {
         return try {
-            val response = app.get(searchUrl, headers = osHeaders, referer = "https://www.opensubtitles.org/")
             val mapper = jacksonObjectMapper()
-            val results: List<OpenSubtitleResult> = mapper.readValue(response.text)
-
+            val results: List<OpenSubtitleResult> = mapper.readValue(jsonText)
             results.mapNotNull { result ->
                 val link = result.downloadLink
                 val lang = result.language ?: "Unknown"
-                if (!link.isNullOrBlank()) {
-                    link to lang
-                } else null
+                if (!link.isNullOrBlank()) link to lang else null
             }
         } catch (_: Exception) {
             emptyList()
         }
     }
+
+    data class OpenSubtitleResult(
+        @JsonProperty("SubFileName") val fileName: String? = null,
+        @JsonProperty("SubDownloadLink") val downloadLink: String? = null,
+        @JsonProperty("LanguageName") val language: String? = null
+    )
+
+    val osHeaders = mapOf(
+        "User-Agent" to "TemporaryUserAgent",
+        "Accept" to "application/json"
+    )
 }

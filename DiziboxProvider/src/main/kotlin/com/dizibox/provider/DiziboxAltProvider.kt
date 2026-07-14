@@ -197,9 +197,14 @@ class DiziboxAltProvider : MainAPI() {
                         .replace(Regex("-\\d+-sezon-.*\$"), "")
                         .takeIf { it.isNotBlank() }
                     if (seriesSlug != null) {
-                        val results = DiziboxUtils.searchOpenSubtitles(app, seriesSlug, season, episode)
-                        results.take(4).forEach { (url, lang) ->
-                            subtitleCallback.invoke(newSubtitleFile(lang, url))
+                        try {
+                            val searchUrl = DiziboxUtils.buildOpenSubtitlesSearchUrl(seriesSlug, season, episode)
+                            val osHtml = app.get(searchUrl, headers = DiziboxUtils.osHeaders, referer = "https://www.opensubtitles.org/").text
+                            val osResults = DiziboxUtils.parseOpenSubtitlesResponse(osHtml)
+                            osResults.take(4).forEach { (url, lang) ->
+                                subtitleCallback.invoke(newSubtitleFile(lang, url))
+                            }
+                        } catch (_: Exception) {
                         }
                     }
                 }
