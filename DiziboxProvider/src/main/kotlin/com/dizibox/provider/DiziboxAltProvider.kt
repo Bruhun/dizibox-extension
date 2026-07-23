@@ -139,7 +139,7 @@ class DiziboxAltProvider : MainAPI() {
             this.posterUrl = poster
             this.plot = description
             this.year = year
-            if (imdbRating != null) this.score = imdbRating.toFloatOrNull()?.toInt()
+            if (imdbRating != null) this.score = Score(imdbRating.toFloatOrNull()?.toInt())
         }
     }
 
