@@ -114,7 +114,15 @@ class DiziboxProvider : MainAPI() {
             headers = DiziboxUtils.headers,
             referer = "$mainUrl/"
         ).document
-        return document.select("article").mapNotNull { parseSearchResult(it) }
+        return document.select("article").mapNotNull { article ->
+            val link = article.selectFirst("a[href*=/dizi/], a[href*=/diziler/]") ?: return@mapNotNull null
+            val url = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+            val title = article.selectFirst("h2, h3, h1")?.text()?.trim()
+                ?: link.text().trim().take(100)
+            if (title.isBlank()) return@mapNotNull null
+            val poster = article.selectFirst("img")?.let { DiziboxUtils.extractImage(it, mainUrl) }
+            newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = poster }
+        }
     }
 
     private suspend fun searchViaArchive(query: String): List<SearchResponse> {
