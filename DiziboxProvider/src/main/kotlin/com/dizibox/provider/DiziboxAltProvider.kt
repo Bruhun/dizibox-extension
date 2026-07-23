@@ -4,7 +4,6 @@ import com.dizibox.utils.DiziboxUtils
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
-import java.net.URLEncoder
 
 class DiziboxAltProvider : MainAPI() {
     override var mainUrl = "https://www.dizibox.live"
@@ -50,23 +49,20 @@ class DiziboxAltProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val searchUrl = "$mainUrl/?s=$encodedQuery"
-        val document = app.get(searchUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
+        val document = app.get("$mainUrl/arsiv/", headers = DiziboxUtils.headers, referer = "$mainUrl/").document
+        val queryLower = query.lowercase().trim()
+        val seen = mutableSetOf<String>()
 
-        val results = document.select("article").mapNotNull { article ->
-            val link = article.selectFirst("a[href*=/dizi/], a[href*=/diziler/]") ?: return@mapNotNull null
-            val url = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
-            val title = article.selectFirst("h2, h3")?.text()?.trim()
-                ?: link.text().trim().take(100)
-
-            if (title.isBlank()) return@mapNotNull null
-            val poster = article.selectFirst("img")?.let { DiziboxUtils.extractImage(it, mainUrl) }
-
-            newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = poster }
+        return document.select(".alphabetical-category-list a[href]").mapNotNull { link ->
+            val title = link.text().trim()
+            val href = link.attr("href")
+            if (title.lowercase().contains(queryLower) && href.contains("/dizi")) {
+                val url = fixUrlNull(href)
+                if (url != null && seen.add(url)) {
+                    newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = null }
+                } else null
+            } else null
         }
-
-        return results
     }
 
     override suspend fun load(url: String): LoadResponse? {

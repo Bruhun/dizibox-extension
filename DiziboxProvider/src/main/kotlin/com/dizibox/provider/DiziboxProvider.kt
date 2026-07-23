@@ -100,56 +100,66 @@ class DiziboxProvider : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val searchUrl = "$mainUrl/?s=$encodedQuery"
-        val document = app.get(searchUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
 
-        val results = document.select("article").mapNotNull { article ->
-            parseSearchResult(article)
+        return try {
+            searchViaWordPress(encodedQuery)
+        } catch (_: Exception) {
+            searchViaArchive(query)
+        }
+    }
+
+    private suspend fun searchViaWordPress(encodedQuery: String): List<SearchResponse> {
+        val document = app.get(
+            "$mainUrl/?s=$encodedQuery",
+            headers = DiziboxUtils.headers,
+            referer = "$mainUrl/"
+        ).document
+        return document.select("article").mapNotNull { parseSearchResult(it) }
+    }
+
+    private suspend fun searchViaArchive(query: String): List<SearchResponse> {
+        val document = app.get(
+            "$mainUrl/arsiv/",
+            headers = DiziboxUtils.headers,
+            referer = "$mainUrl/"
+        ).document
+
+        val queryLower = query.lowercase().trim()
+        val results = mutableListOf<SearchResponse>()
+        val seen = mutableSetOf<String>()
+
+        document.select(".alphabetical-category-list a[href]").forEach { link ->
+            val href = link.attr("href")
+            val title = link.text().trim()
+            if (title.lowercase().contains(queryLower) && href.contains("/dizi")) {
+                val url = fixUrlNull(href) ?: return@forEach
+                if (seen.add(url)) {
+                    results.add(
+                        newTvSeriesSearchResponse(title, url, TvType.TvSeries) {
+                            this.posterUrl = null
+                        }
+                    )
+                }
+            }
         }
 
         if (results.isEmpty()) {
-            val archiveUrl = "$mainUrl/arsiv/?arama=$encodedQuery"
-            val archiveDoc = app.get(archiveUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
-            return archiveDoc.select("article.grid-box").mapNotNull { parseGridBoxResult(it) }
+            document.select("article a[href*=/dizi/]").forEach { link ->
+                val title = link.text().trim()
+                if (title.lowercase().contains(queryLower)) {
+                    val url = fixUrlNull(link.attr("href")) ?: return@forEach
+                    if (seen.add(url)) {
+                        results.add(
+                            newTvSeriesSearchResponse(title, url, TvType.TvSeries) {
+                                this.posterUrl = null
+                            }
+                        )
+                    }
+                }
+            }
         }
 
         return results
-    }
-
-    private fun parseSearchResult(element: Element): SearchResponse? {
-        val link = element.selectFirst("a[href*=/dizi/], a[href*=/diziler/]") ?: return null
-        val url = fixUrlNull(link.attr("href")) ?: return null
-        val title = element.selectFirst("h2, h3, h1")?.text()?.trim()
-            ?: link.selectFirst("div.tv-title, .poster-title, .series-details div")?.text()?.trim()
-            ?: return null
-
-        if (title.isBlank()) return null
-
-        val poster = element.selectFirst("img.afis, img[src]")?.let {
-            DiziboxUtils.extractImage(it, mainUrl)
-        }
-
-        return newTvSeriesSearchResponse(title, url, TvType.TvSeries) {
-            this.posterUrl = poster
-        }
-    }
-
-    private fun parseGridBoxResult(element: Element): SearchResponse? {
-        val link = element.selectFirst("a.season-episode") ?: element.selectFirst("a[href*=/dizi/]") ?: return null
-        val url = fixUrlNull(link.attr("href")) ?: return null
-        val title = element.selectFirst(".post-title a")?.text()?.trim()
-            ?: link.text()?.trim()
-            ?: return null
-
-        val poster = element.selectFirst("img.afis")?.let {
-            DiziboxUtils.extractImage(it, mainUrl)
-        } ?: element.selectFirst(".box-image")?.attr("style")?.let {
-            Regex("url\\(['\"]?(.*?)['\"]?\\)").find(it)?.groupValues?.get(1)
-        }
-
-        return newTvSeriesSearchResponse(title, url, TvType.TvSeries) {
-            this.posterUrl = poster
-        }
     }
 
     override suspend fun load(url: String): LoadResponse? {
