@@ -257,7 +257,7 @@ class DiziboxProvider : MainAPI() {
             this.plot = description
             this.year = year
             if (imdbRating != null) {
-                addScore(Score.from10(imdbRating.toFloatOrNull() ?: 0.0f))
+                this.score = Score.from10(imdbRating.toFloatOrNull() ?: 0.0f)
             }
         }
     }
