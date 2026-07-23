@@ -1,11 +1,11 @@
 version = 8
 
 cloudstream {
-    description = "Dizibox - Yabanci dizi ve film izleme eklentisi"
+    description = "Dizibox - Yabanci dizi izleme eklentisi"
     authors = listOf("Dizibox")
 
     status = 1
-    tvTypes = listOf("Movie", "TvSeries")
+    tvTypes = listOf("TvSeries")
     requiresResources = false
     language = "tr"
 

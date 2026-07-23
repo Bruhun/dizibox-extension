@@ -8,153 +8,138 @@ import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 class DiziboxAltProvider : MainAPI() {
-    override var mainUrl = "https://dizipal2084.com"
+    override var mainUrl = "https://www.dizibox.live"
     override var name = "Dizibox Alt"
     override val hasMainPage = true
     override var lang = "tr"
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Movie)
+    override val supportedTypes = setOf(TvType.TvSeries)
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(mainUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
         val homePageList = ArrayList<HomePageList>()
 
-        val trendingItems = document.select("a.trending-item").mapNotNull { parseTrendingCard(it) }
-        if (trendingItems.isNotEmpty()) {
-            homePageList.add(HomePageList("Trendler", trendingItems))
+        val newSeries = document.select("#new-series article.article-series-poster").mapNotNull { parseCard(it) }
+        if (newSeries.isNotEmpty()) {
+            homePageList.add(HomePageList("Yeni Diziler", newSeries))
         }
 
-        val latestItems = document.select(".content-card a.card-link").mapNotNull { parseContentCard(it) }
-        if (latestItems.isNotEmpty()) {
-            homePageList.add(HomePageList("Son Eklenenler", latestItems))
+        val episodes = document.select("article.article-episode-card").mapNotNull { parseEpisodeCard(it) }
+        if (episodes.isNotEmpty()) {
+            homePageList.add(HomePageList("Son Bolumler", episodes))
         }
 
         if (homePageList.isEmpty()) throw ErrorLoadingException("Ana sayfa yuklenemedi")
         return newHomePageResponse(homePageList, false)
     }
 
-    private fun parseTrendingCard(element: Element): SearchResponse? {
-        val url = fixUrlNull(element.attr("href").takeIf { it.isNotBlank() } ?: return null) ?: return null
-        val title = element.selectFirst(".trending-title")?.text()?.trim() ?: return null
-        val badge = element.selectFirst(".trending-badge")?.text()?.trim()?.lowercase() ?: ""
-        val poster = element.selectFirst("img")?.let { DiziboxUtils.extractImage(it, mainUrl) }
-        val type = if (badge.contains("film")) TvType.Movie else TvType.TvSeries
+    private fun parseCard(element: Element): SearchResponse? {
+        val link = element.selectFirst("a.figure-link[href]") ?: return null
+        val url = fixUrlNull(link.attr("href")) ?: return null
+        val title = element.selectFirst("a.poster-title")?.text()?.trim() ?: return null
+        val poster = element.selectFirst("img.afis")?.let { DiziboxUtils.extractImage(it, mainUrl) }
 
-        return if (type == TvType.Movie) {
-            newMovieSearchResponse(title, url, TvType.Movie) { this.posterUrl = poster }
-        } else {
-            newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = poster }
-        }
+        return newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = poster }
     }
 
-    private fun parseContentCard(element: Element): SearchResponse? {
-        val url = fixUrlNull(element.attr("href").takeIf { it.isNotBlank() } ?: return null) ?: return null
-        val title = element.selectFirst(".card-title")?.text()?.trim() ?: return null
-        val badge = element.selectFirst(".card-badge")?.text()?.trim()?.lowercase() ?: ""
-        val poster = element.selectFirst("img")?.let { DiziboxUtils.extractImage(it, mainUrl) }
-        val type = if (badge.contains("film") || url.contains("/film/")) TvType.Movie else TvType.TvSeries
+    private fun parseEpisodeCard(element: Element): SearchResponse? {
+        val link = element.selectFirst("a.episode-card-title") ?: return null
+        val url = fixUrlNull(link.attr("href")) ?: return null
+        val title = link.text().trim()
+        val poster = element.selectFirst("img.afis")?.let { DiziboxUtils.extractImage(it, mainUrl) }
 
-        return if (type == TvType.Movie) {
-            newMovieSearchResponse(title, url, TvType.Movie) { this.posterUrl = poster }
-        } else {
-            newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = poster }
-        }
+        return newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = poster }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val searchUrl = "$mainUrl/arama?q=$encodedQuery"
+        val searchUrl = "$mainUrl/?s=$encodedQuery"
         val document = app.get(searchUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
-        return document.select(".content-card a.card-link").mapNotNull { parseContentCard(it) }
+
+        val results = document.select("article").mapNotNull { article ->
+            val link = article.selectFirst("a[href*=/dizi/], a[href*=/diziler/]") ?: return@mapNotNull null
+            val url = fixUrlNull(link.attr("href")) ?: return@mapNotNull null
+            val title = article.selectFirst("h2, h3")?.text()?.trim()
+                ?: link.text().trim().take(100)
+
+            if (title.isBlank()) return@mapNotNull null
+            val poster = article.selectFirst("img")?.let { DiziboxUtils.extractImage(it, mainUrl) }
+
+            newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = poster }
+        }
+
+        return results
     }
 
     override suspend fun load(url: String): LoadResponse? {
         val fixedUrl = fixUrl(url)
+        val doc = app.get(fixedUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
 
-        return when {
-            "/dizi/" in fixedUrl -> loadSeriesPage(fixedUrl)
-            "/film/" in fixedUrl -> loadMoviePage(fixedUrl)
-            else -> {
-                val document = app.get(fixedUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
-                if (document.selectFirst(".season-buttons, .detail-episode-list") != null) {
-                    loadSeriesPage(fixedUrl, document)
-                } else {
-                    loadMoviePage(fixedUrl, document)
-                }
-            }
-        }
-    }
+        val title = doc.selectFirst("h1")?.text()?.trim()
+            ?: doc.selectFirst("meta[property=og:title]")?.attr("content")?.replace(Regex(" izle \\|.*$"), "")?.trim()
+            ?: throw ErrorLoadingException("Dizi basligi bulunamadi")
 
-    private suspend fun loadSeriesPage(url: String, document: Document? = null): LoadResponse? {
-        val doc = document ?: app.get(url, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
+        val poster = doc.selectFirst("#main-cover img.main-cover")?.let { DiziboxUtils.extractImage(it, mainUrl) }
+            ?: doc.selectFirst("meta[property=og:image]")?.attr("content")
 
-        val title = doc.selectFirst("h1.page-title, h1.series-title, meta[property=\"og:title\"]")?.let {
-            if (it.tagName() == "meta") {
-                it.attr("content").replace(Regex(" izle \\|.*$"), "").trim()
-            } else {
-                it.text().trim()
-            }
-        } ?: throw ErrorLoadingException("Dizi basligi bulunamadi")
+        val description = doc.selectFirst(".tv-story p")?.text()?.trim()
+            ?: doc.selectFirst("meta[property=og:description]")?.attr("content")?.trim()
 
-        val poster = doc.selectFirst("meta[property=\"og:image\"]")?.attr("content")
-            ?: doc.selectFirst(".series-poster img, .detail-poster img")?.let { DiziboxUtils.extractImage(it, mainUrl) }
-
-        val description = doc.selectFirst("meta[property=\"og:description\"]")?.attr("content")?.trim()
-            ?: doc.selectFirst(".series-description, .detail-description")?.text()?.trim()
-
-        val year = doc.selectFirst("meta[property=\"og:video:release_date\"]")?.attr("content")?.take(4)?.toIntOrNull()
+        val year = doc.selectFirst("a[href*=/yil/]")?.text()?.trim()?.toIntOrNull()
+        val imdbRating = doc.selectFirst(".label-imdb b")?.text()?.trim()
 
         val episodeList = ArrayList<Episode>()
 
-        doc.select(".detail-episode-list, .season-content").forEach { seasonBlock ->
-            val rawSeason = seasonBlock.attr("data-episodes").ifBlank {
-                seasonBlock.attr("data-season-content")
+        val seasonLinks = doc.select("#seasons-list a.btn")
+        if (seasonLinks.isNotEmpty()) {
+            for (seasonBtn in seasonLinks) {
+                val seasonNum = seasonBtn.text().trim().replace(".", "").takeWhile { it.isDigit() }.toIntOrNull() ?: continue
+                val seasonHref = seasonBtn.attr("href").takeIf { it.isNotBlank() } ?: continue
+                val seasonUrl = fixUrl(seasonHref)
+
+                try {
+                    val seasonDoc = app.get(seasonUrl, headers = DiziboxUtils.headers, referer = fixedUrl).document
+                    seasonDoc.select("#category-posts article.grid-box a.season-episode").forEach { link ->
+                        val epUrl = fixUrlNull(link.attr("href")) ?: return@forEach
+                        val label = link.text().trim()
+                        val parts = label.split("Sezon", "Bolum", ".").mapNotNull { it.trim().replace(".", "").toIntOrNull() }
+                        val ep = parts.getOrElse(if (parts.size > 1) 1 else parts.getOrElse(0) { 1 }) { 1 }
+                        episodeList.add(
+                            newEpisode(epUrl) {
+                                this.name = label
+                                this.season = seasonNum
+                                this.episode = ep.coerceAtLeast(1)
+                            }
+                        )
+                    }
+                } catch (_: Exception) {
+                }
             }
-            val season = rawSeason.toIntOrNull() ?: return@forEach
+        }
 
-            seasonBlock.select("a.detail-episode-item, a.episode-item").forEach { epEl ->
-                val href = epEl.attr("href").takeIf { it.isNotBlank() } ?: return@forEach
-                val epUrl = fixUrl(href)
-                val epLabel = epEl.selectFirst(".detail-episode-title, .ep-label")?.text()?.trim()
-                    ?: epEl.selectFirst(".detail-episode-subtitle")?.text()?.trim()
-                    ?: "$season. Sezon"
-
+        if (episodeList.isEmpty()) {
+            doc.select("#category-posts article.grid-box a.season-episode").forEach { link ->
+                val epUrl = fixUrlNull(link.attr("href")) ?: return@forEach
+                val label = link.text().trim()
+                val parts = label.split("Sezon", "Bolum", ".").mapNotNull { it.trim().replace(".", "").toIntOrNull() }
+                val s = parts.getOrElse(0) { 1 }
+                val ep = parts.getOrElse(if (parts.size > 1) 1 else 0) { 1 }
                 episodeList.add(
                     newEpisode(epUrl) {
-                        this.name = epLabel
-                        this.season = season
+                        this.name = label
+                        this.season = s.coerceAtLeast(1)
+                        this.episode = ep.coerceAtLeast(1)
                     }
                 )
             }
         }
 
-        if (episodeList.isEmpty()) {
-            throw ErrorLoadingException("Hic bolum bulunamadi")
-        }
+        if (episodeList.isEmpty()) throw ErrorLoadingException("Hic bolum bulunamadi")
 
-        return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodeList) {
+        return newTvSeriesLoadResponse(title, fixedUrl, TvType.TvSeries, episodeList) {
             this.posterUrl = poster
             this.plot = description
             this.year = year
-        }
-    }
-
-    private suspend fun loadMoviePage(url: String, document: Document? = null): LoadResponse? {
-        val doc = document ?: app.get(url, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
-
-        val title = doc.selectFirst("h1.page-title, meta[property=\"og:title\"]")?.let {
-            if (it.tagName() == "meta") {
-                it.attr("content").replace(Regex(" izle \\|.*$"), "").trim()
-            } else {
-                it.text().trim()
-            }
-        } ?: throw ErrorLoadingException("Film basligi bulunamadi")
-
-        val poster = doc.selectFirst("meta[property=\"og:image\"]")?.attr("content")
-        val description = doc.selectFirst("meta[property=\"og:description\"]")?.attr("content")?.trim()
-
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = poster
-            this.plot = description
+            if (imdbRating != null) addRating("IMDb", imdbRating)
         }
     }
 
@@ -166,50 +151,21 @@ class DiziboxAltProvider : MainAPI() {
     ): Boolean {
         val fixedData = fixUrl(data)
 
-        val slug = fixedData.substringAfter("$mainUrl/bolum/")
-            .substringAfter("/bolum/")
-            .substringAfter("$mainUrl/film/")
-            .substringAfter("/film/")
-            .trim('/')
+        try {
+            val doc = app.get(fixedData, headers = DiziboxUtils.headers, referer = "$mainUrl/").document
+            val iframeSrc = doc.selectFirst("#video-area iframe[src]")?.attr("src")
 
-        if (slug.isBlank()) return false
+            if (iframeSrc.isNullOrBlank()) return false
 
-        val type = if ("/film/" in fixedData) "film" else "dizi"
-        val embedUrl = "$mainUrl/api/embed.php?slug=${URLEncoder.encode(slug, "UTF-8")}&domain=$mainUrl&type=$type"
+            val iframeHtml = app.get(iframeSrc, headers = DiziboxUtils.headers, referer = fixedData).text
 
-        return try {
-            val html = app.get(embedUrl, headers = DiziboxUtils.headers, referer = "$mainUrl/").text
-            val hlsUrl = Regex("""var\s+(hlsSrc|src)\s*=\s*["'`]([^"'`]+)["'`]""").find(html)?.groupValues?.let { it.getOrNull(2) }
-            var subsFound = false
-
-            val embedSubs = DiziboxUtils.extractSubtitlesFromEmbed(html)
+            val embedSubs = DiziboxUtils.extractSubtitlesFromEmbed(iframeHtml)
             embedSubs.forEach { (url, label) ->
-                subsFound = true
                 subtitleCallback.invoke(newSubtitleFile(label, url))
             }
 
-            if (!subsFound && type == "dizi") {
-                val seasonMatch = Regex("-(\\d+)-sezon-").find(slug)
-                val episodeMatch = Regex("-(\\d+)-bolum").find(slug)
-                val season = seasonMatch?.groupValues?.get(1)?.toIntOrNull()
-                val episode = episodeMatch?.groupValues?.get(1)?.toIntOrNull()
-                if (season != null && episode != null) {
-                    val seriesSlug = slug.replace(Regex("-\\d+-sezon-\\d+-bolum\$"), "")
-                        .replace(Regex("-\\d+-sezon-.*\$"), "")
-                        .takeIf { it.isNotBlank() }
-                    if (seriesSlug != null) {
-                        try {
-                            val searchUrl = DiziboxUtils.buildOpenSubtitlesSearchUrl(seriesSlug, season, episode)
-                            val osHtml = app.get(searchUrl, headers = DiziboxUtils.osHeaders, referer = "https://www.opensubtitles.org/").text
-                            val osResults = DiziboxUtils.parseOpenSubtitlesResponse(osHtml)
-                            osResults.take(4).forEach { (url, lang) ->
-                                subtitleCallback.invoke(newSubtitleFile(lang, url))
-                            }
-                        } catch (_: Exception) {
-                        }
-                    }
-                }
-            }
+            val hlsUrl = DiziboxUtils.extractHlsUrl(iframeHtml)
+                ?: DiziboxUtils.extractVideoUrl(iframeHtml)
 
             if (!hlsUrl.isNullOrBlank()) {
                 callback.invoke(
@@ -219,16 +175,16 @@ class DiziboxAltProvider : MainAPI() {
                         url = hlsUrl,
                         type = ExtractorLinkType.M3U8
                     ) {
-                        this.referer = embedUrl
+                        this.referer = iframeSrc
                         this.quality = Qualities.Unknown.value
                     }
                 )
-                true
-            } else {
-                false
+                return true
             }
-        } catch (_: Exception) {
-            false
+
+            return false
+        } catch (e: Exception) {
+            return false
         }
     }
 }

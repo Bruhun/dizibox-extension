@@ -44,6 +44,39 @@ object DiziboxUtils {
         return results
     }
 
+    fun extractHlsUrl(html: String): String? {
+        val patterns = listOf(
+            Regex("""var\s+(?:hlsSrc|src|videoUrl|video)\s*=\s*["'`]([^"'`]+)["'`]"""),
+            Regex("""source\s*:\s*["'`]([^"'`]*\.m3u8[^"'`]*)["'`]"""),
+            Regex("""file\s*:\s*["'`]([^"'`]*\.m3u8[^"'`]*)["'`]"""),
+            Regex("""["'`](https?://[^"'`]*\.m3u8[^"'`]*)["'`]""")
+        )
+        for (pattern in patterns) {
+            val match = pattern.find(html) ?: continue
+            val url = match.groupValues.getOrNull(1) ?: continue
+            if (url.isNotBlank() && url.contains(".")) {
+                return url.replace("\\/", "/")
+            }
+        }
+        return null
+    }
+
+    fun extractVideoUrl(html: String): String? {
+        val patterns = listOf(
+            Regex("""var\s+(?:src|videoUrl|video|file)\s*=\s*["'`]([^"'`]+)["'`]"""),
+            Regex("""source\s*:\s*["'`]([^"'`]*\.(?:mp4|mkv|webm)[^"'`]*)["'`]"""),
+            Regex("""file\s*:\s*["'`]([^"'`]*\.(?:mp4|mkv|webm)[^"'`]*)["'`]""")
+        )
+        for (pattern in patterns) {
+            val match = pattern.find(html) ?: continue
+            val url = match.groupValues.getOrNull(1) ?: continue
+            if (url.isNotBlank() && url.contains(".")) {
+                return url.replace("\\/", "/")
+            }
+        }
+        return null
+    }
+
     fun buildOpenSubtitlesSearchUrl(seriesSlug: String, season: Int, episode: Int): String {
         val query = seriesSlug.replace("-", " ")
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
