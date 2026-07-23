@@ -49,8 +49,17 @@ class DiziboxAltProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/arsiv/", headers = DiziboxUtils.headers, referer = "$mainUrl/").document
         val queryLower = query.lowercase().trim()
+        if (queryLower.length < 2) return emptyList()
+
+        val results = try { searchViaArchive(queryLower) } catch (_: Exception) { emptyList() }
+        if (results.isNotEmpty()) return results
+
+        return try { searchViaFeed(queryLower) } catch (_: Exception) { emptyList() }
+    }
+
+    private suspend fun searchViaArchive(queryLower: String): List<SearchResponse> {
+        val document = app.get("$mainUrl/arsiv/", headers = DiziboxUtils.headers, referer = "$mainUrl/").document
         val seen = mutableSetOf<String>()
 
         return document.select(".alphabetical-category-list a[href]").mapNotNull { link ->
@@ -62,6 +71,18 @@ class DiziboxAltProvider : MainAPI() {
                     newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = null }
                 } else null
             } else null
+        }
+    }
+
+    private suspend fun searchViaFeed(queryLower: String): List<SearchResponse> {
+        val document = app.get("$mainUrl/feed/", headers = DiziboxUtils.headers, referer = "$mainUrl/").document
+        return document.select("item").mapNotNull { item ->
+            val title = item.selectFirst("title")?.text()?.trim() ?: return@mapNotNull null
+            if (!title.lowercase().contains(queryLower)) return@mapNotNull null
+            val link = item.selectFirst("link")?.text()?.trim() ?: return@mapNotNull null
+            val url = fixUrlNull(link) ?: return@mapNotNull null
+            if (!url.contains("/dizi")) return@mapNotNull null
+            newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = null }
         }
     }
 

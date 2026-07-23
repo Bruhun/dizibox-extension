@@ -99,16 +99,20 @@ class DiziboxProvider : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+        val queryLower = query.lowercase().trim()
+        if (queryLower.length < 2) return emptyList()
 
-        return try {
-            searchViaWordPress(encodedQuery)
-        } catch (_: Exception) {
-            searchViaArchive(query)
-        }
+        val results = try { searchViaArchive(queryLower) } catch (_: Exception) { emptyList() }
+        if (results.isNotEmpty()) return results
+
+        val wpResults = try { searchViaWordPress(queryLower) } catch (_: Exception) { emptyList() }
+        if (wpResults.isNotEmpty()) return wpResults
+
+        return try { searchViaFeed(queryLower) } catch (_: Exception) { emptyList() }
     }
 
-    private suspend fun searchViaWordPress(encodedQuery: String): List<SearchResponse> {
+    private suspend fun searchViaWordPress(queryLower: String): List<SearchResponse> {
+        val encodedQuery = URLEncoder.encode(queryLower, "UTF-8")
         val document = app.get(
             "$mainUrl/?s=$encodedQuery",
             headers = DiziboxUtils.headers,
@@ -125,14 +129,13 @@ class DiziboxProvider : MainAPI() {
         }
     }
 
-    private suspend fun searchViaArchive(query: String): List<SearchResponse> {
+    private suspend fun searchViaArchive(queryLower: String): List<SearchResponse> {
         val document = app.get(
             "$mainUrl/arsiv/",
             headers = DiziboxUtils.headers,
             referer = "$mainUrl/"
         ).document
 
-        val queryLower = query.lowercase().trim()
         val results = mutableListOf<SearchResponse>()
         val seen = mutableSetOf<String>()
 
@@ -152,13 +155,13 @@ class DiziboxProvider : MainAPI() {
         }
 
         if (results.isEmpty()) {
-            document.select("article a[href*=/dizi/]").forEach { link ->
-                val title = link.text().trim()
-                if (title.lowercase().contains(queryLower)) {
+            document.select("a[href*=/dizi/]").forEach { link ->
+                val title = link.text().trim().lowercase()
+                if (title.contains(queryLower)) {
                     val url = fixUrlNull(link.attr("href")) ?: return@forEach
                     if (seen.add(url)) {
                         results.add(
-                            newTvSeriesSearchResponse(title, url, TvType.TvSeries) {
+                            newTvSeriesSearchResponse(link.text().trim(), url, TvType.TvSeries) {
                                 this.posterUrl = null
                             }
                         )
@@ -168,6 +171,23 @@ class DiziboxProvider : MainAPI() {
         }
 
         return results
+    }
+
+    private suspend fun searchViaFeed(queryLower: String): List<SearchResponse> {
+        val document = app.get(
+            "$mainUrl/feed/",
+            headers = DiziboxUtils.headers,
+            referer = "$mainUrl/"
+        ).document
+
+        return document.select("item").mapNotNull { item ->
+            val title = item.selectFirst("title")?.text()?.trim() ?: return@mapNotNull null
+            if (!title.lowercase().contains(queryLower)) return@mapNotNull null
+            val link = item.selectFirst("link")?.text()?.trim() ?: return@mapNotNull null
+            val url = fixUrlNull(link) ?: return@mapNotNull null
+            if (!url.contains("/dizi")) return@mapNotNull null
+            newTvSeriesSearchResponse(title, url, TvType.TvSeries) { this.posterUrl = null }
+        }
     }
 
     override suspend fun load(url: String): LoadResponse? {
