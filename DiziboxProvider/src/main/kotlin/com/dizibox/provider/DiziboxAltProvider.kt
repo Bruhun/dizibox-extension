@@ -3,7 +3,6 @@ package com.dizibox.provider
 import com.dizibox.utils.DiziboxUtils
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
@@ -139,7 +138,7 @@ class DiziboxAltProvider : MainAPI() {
             this.posterUrl = poster
             this.plot = description
             this.year = year
-            if (imdbRating != null) this.score = Score(imdbRating.toFloatOrNull()?.toInt())
+            if (imdbRating != null) addScore(Score.from10(imdbRating.toFloatOrNull() ?: 0.0f))
         }
     }
 

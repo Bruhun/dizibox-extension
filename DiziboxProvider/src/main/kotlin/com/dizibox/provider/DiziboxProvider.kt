@@ -147,15 +147,8 @@ class DiziboxProvider : MainAPI() {
             Regex("url\\(['\"]?(.*?)['\"]?\\)").find(it)?.groupValues?.get(1)
         }
 
-        val label = link.text().trim()
-        return if (label.contains("Sezon") && label.contains("Bolum")) {
-            newTvSeriesSearchResponse(title, url, TvType.TvSeries) {
-                this.posterUrl = poster
-            }
-        } else {
-            newTvSeriesSearchResponse(title, url, TvType.TvSeries) {
-                this.posterUrl = poster
-            }
+        return newTvSeriesSearchResponse(title, url, TvType.TvSeries) {
+            this.posterUrl = poster
         }
     }
 
@@ -264,7 +257,7 @@ class DiziboxProvider : MainAPI() {
             this.plot = description
             this.year = year
             if (imdbRating != null) {
-                this.score = Score(imdbRating.toFloatOrNull()?.toInt())
+                addScore(Score.from10(imdbRating.toFloatOrNull() ?: 0.0f))
             }
         }
     }
